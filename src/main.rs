@@ -8,6 +8,19 @@ struct Scaffold {
     contig_gcs: Vec<f64>,
 }
 
+struct Summary {
+    n50: u64,
+    l50: u64,
+    n90: u64,
+    l90: u64,
+    scaffold_length: u64,
+    scaffold_count: u64,
+    contig_length: u64,
+    contig_count: u64,
+    largest_scaffold: u64,
+    largest_contig: u64,
+}
+
 impl std::fmt::Display for Scaffold {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
@@ -29,6 +42,38 @@ impl std::fmt::Display for Scaffold {
                 .collect::<Vec<String>>()
                 .join(",")
         )
+    }
+}
+
+impl std::fmt::Display for Summary {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "N50: {}\nL50: {}\nN90: {}\nL90: {}\nScaffold length: {}\nScaffold count: {}\nContig length: {}\nContig count: {}\nLargest scaffold: {}\nLargest contig: {}",
+            self.n50,
+            self.l50,
+            self.n90,
+            self.l90,
+            self.scaffold_length,
+            self.scaffold_count,
+            self.contig_length,
+            self.contig_count,
+            self.largest_scaffold,
+            self.largest_contig
+        )
+    }
+}
+
+fn unit_scaling(value: u64) -> String {
+    // This function takes the number of basepairs and returns a string with an appropriate unit. Units should be < 1000 and rounded to 1 decimal place
+    if value < 1000 {
+        format!("{} bp", value)
+    } else if value < 1000000 {
+        format!("{:.1} kbp", value as f64 / 1000.0)
+    } else if value < 1000000000 {
+        format!("{:.1} Mbp", value as f64 / 1000000.0)
+    } else {
+        format!("{:.1} Gbp", value as f64 / 1000000000.0)
     }
 }
 
@@ -93,35 +138,12 @@ fn parse_scaffold(sequence: &[u8]) -> Scaffold {
     }
 }
 
-fn calculate_ln50(scaffolds: &[Scaffold]) -> u64 {
-    // Calculate the N50 and L50 of the scaffolds
-    let mut lengths: Vec<u64> = scaffolds
-        .iter()
-        .map(|scaffold| scaffold.length)
-        .collect();
-    lengths.sort();
+fn summary_statistics(scaffolds: &[Scaffold]) -> Summary {
 
-    let mut total_length = 0;
-    for length in lengths.iter().rev() {
-        total_length += length;
-        if total_length >= scaffolds.iter().map(|scaffold| scaffold.length).sum::<u64>() / 2 {
-            return *length;
-        }
-    }
-    0
-}
-
-fn summary_statistics(scaffolds: &[Scaffold]) {
-    let mut n50 = 0;
-    let mut l50 = 0;
-    let mut n90 = 0;
-    let mut l90 = 0;
-    let mut scaffold_length = 0;
-    let mut scaffold_count = 0;
-    let mut contig_length = 0;
-    let mut contig_count = 0;
-    let mut largest_scaffold = 0;
-    let mut largest_contig = 0;
+    // Scaffold statistics
+    let scaffold_length: u64 = scaffolds.iter().map(|scaffold| scaffold.length).sum();
+    let scaffold_count: u64 = scaffolds.len() as u64;
+    let largest_scaffold: u64 = scaffolds.iter().map(|scaffold| scaffold.length).max().unwrap_or(0);
 
     // get sorted list of all contig lengths
     let mut contig_lengths: Vec<u64> = scaffolds
@@ -131,14 +153,21 @@ fn summary_statistics(scaffolds: &[Scaffold]) {
     
     contig_lengths.sort();
 
+    let largest_contig: u64 = contig_lengths.last().copied().unwrap_or(0);
+
+    let contig_length: u64 = contig_lengths.iter().sum();
+    let contig_count: u64 = contig_lengths.len() as u64;
+    let n50_threshold = (contig_length as f64 * 0.5) as u64;
+    let n90_threshold = (contig_length as f64 * 0.9) as u64;
+
+    // iterate over contig lengths in descending order and calculate N/L50 and N/L90. Once N50 has been calculated it will not be recalculated
     let mut accumulated_length = 0;
     let mut number_of_contigs = 0;
 
-    let total_length: u64 = contig_lengths.iter().sum();
-    let n50_threshold = (total_length as f64 * 0.5) as u64;
-    let n90_threshold = (total_length as f64 * 0.9) as u64;
-
-    // iterate over contig lengths in descending order and calculate N/L50 and N/L90. Once N50 has been calculated it will not be recalculated
+    let mut n50 = 0;
+    let mut l50 = 0;
+    let mut n90 = 0;
+    let mut l90 = 0;
     for length in contig_lengths.iter().rev() {
         accumulated_length += length;
         number_of_contigs += 1;
@@ -154,9 +183,20 @@ fn summary_statistics(scaffolds: &[Scaffold]) {
             break;
         }
     }
-        
-}
 
+    Summary {
+        n50,
+        l50,
+        n90,
+        l90,
+        scaffold_length,
+        scaffold_count,
+        contig_length,
+        contig_count,
+        largest_scaffold,
+        largest_contig,
+    }
+}
 
 fn main() {
     use bio::io::fasta;
@@ -174,5 +214,9 @@ fn main() {
         scaffolds.push(scaffold);
     }
 
-    summary_statistics(&scaffolds);
+    let summary = summary_statistics(&scaffolds);
+
+    println!("L/N50: {}/{}", summary.l50, unit_scaling(summary.n50));
+    println!("L/N90: {}/{}", summary.l90, unit_scaling(summary.n90));
+
 }

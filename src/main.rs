@@ -65,16 +65,16 @@ impl std::fmt::Display for Summary {
     }
 }
 
-fn unit_scaling(value: u64) -> String {
+fn unit_scaling(value: u64, decimal: usize) -> String {
     // This function takes the number of basepairs and returns a string with an appropriate unit. Units should be < 1000 and rounded to 1 decimal place
     if value < 1000 {
         format!("{} bp", value)
     } else if value < 1000000 {
-        format!("{:.1} kbp", value as f64 / 1000.0)
+        format!("{:.1$} kbp", value as f64 / 1000.0, decimal)
     } else if value < 1000000000 {
-        format!("{:.1} Mbp", value as f64 / 1000000.0)
+        format!("{:.1$} Mbp", value as f64 / 1000000.0, decimal)
     } else {
-        format!("{:.1} Gbp", value as f64 / 1000000000.0)
+        format!("{:.1$} Gbp", value as f64 / 1000000000.0, decimal)
     }
 }
 
@@ -140,18 +140,21 @@ fn parse_scaffold(sequence: &[u8]) -> Scaffold {
 }
 
 fn summary_statistics(scaffolds: &[Scaffold]) -> Summary {
-
     // Scaffold statistics
     let scaffold_length: u64 = scaffolds.iter().map(|scaffold| scaffold.length).sum();
     let scaffold_count: u64 = scaffolds.len() as u64;
-    let largest_scaffold: u64 = scaffolds.iter().map(|scaffold: &Scaffold| scaffold.length).max().unwrap_or(0);
+    let largest_scaffold: u64 = scaffolds
+        .iter()
+        .map(|scaffold: &Scaffold| scaffold.length)
+        .max()
+        .unwrap_or(0);
 
     // get sorted list of all contig lengths
     let mut contig_lengths: Vec<u64> = scaffolds
         .iter()
         .flat_map(|scaffold: &Scaffold| scaffold.contig_lengths.clone())
         .collect();
-    
+
     contig_lengths.sort();
 
     let largest_contig: u64 = contig_lengths.last().copied().unwrap_or(0);
@@ -200,38 +203,43 @@ fn summary_statistics(scaffolds: &[Scaffold]) -> Summary {
     }
 }
 
-fn length_histogram(sorted_contig_lengths: &Vec<u64>) {
-    // Take a sorted list of contig lengths and print a horizontal histogram
-    use termion::terminal_size;
-    let term_size = terminal_size().unwrap_or((0, 0));
+fn print_summary(summary: &Summary) {
+    println!("Scaffold count: {}", summary.scaffold_count);
+    println!("Scaffold length: {}", unit_scaling(summary.scaffold_length, 1));
+    println!("Largest scaffold: {}", unit_scaling(summary.largest_scaffold, 1));
+    println!("Contig count: {}", summary.contig_count);
+    println!("Contig length: {}", unit_scaling(summary.contig_length, 1));
+    println!("Largest contig: {}", unit_scaling(summary.largest_contig, 1));
+    println!("L/N50: {}/{}", summary.l50, unit_scaling(summary.n50, 1));
+    println!("L/N90: {}/{}", summary.l90, unit_scaling(summary.n90, 1)); 
 
-    // calculate bin size
-    let max_contig_length: f64 = *sorted_contig_lengths.last().unwrap_or(&0) as f64;
-    let n_bins: f64 = term_size.1 as f64;
-    let bin_size: f64 = max_contig_length / n_bins;
+    let mut minimum_length: u64 = 1000;
+    loop {
+        let mut n_contigs: u64 = 0;
+        let mut accumulated_length: u64 = 0;
 
-    let mut bins: Vec<u64> = vec![0; n_bins as usize + 1];
+        for length in summary.sorted_contig_lengths.iter() {
+            if *length >= minimum_length {
+                n_contigs += 1;
+                accumulated_length += length;
+            }
+        }
 
-    for length in sorted_contig_lengths {
-        let bin: usize = (*length as f64 / bin_size) as usize;
-        bins[bin] += *length;
+        if n_contigs == 0 {
+            break;
+        }
+
+        println!("{}\t{}\t{}", unit_scaling(minimum_length, 0), n_contigs, unit_scaling(accumulated_length, 1));
+
+        minimum_length *= 10;
     }
-
-    // scale bin sizes to terminal width
-    let max_bin_size: u64 = *bins.iter().max().unwrap_or(&0);
-    let scale_factor: f64 = term_size.0 as f64 / max_bin_size as f64;
-
-    for bin in bins {
-        let scaled_bin: u64 = (bin as f64 * scale_factor) as u64;
-        println!("{}", "*".repeat(scaled_bin as usize));
-    }
-
-    
 }
 
 fn main() {
     use bio::io::fasta;
     use std::io;
+    use std::fs::File;
+    use std::io::Write;
 
     let reader: fasta::Reader<io::BufReader<io::Stdin>> = fasta::Reader::new(io::stdin());
 
@@ -247,7 +255,6 @@ fn main() {
 
     let summary: Summary = summary_statistics(&scaffolds);
 
-    println!("L/N50: {}/{}", summary.l50, unit_scaling(summary.n50));
-    println!("L/N90: {}/{}", summary.l90, unit_scaling(summary.n90));
-    length_histogram(&summary.sorted_contig_lengths);
+    print_summary(&summary);
+
 }

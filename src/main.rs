@@ -219,4 +219,6 @@ fn main() {
     println!("L/N50: {}/{}", summary.l50, unit_scaling(summary.n50));
     println!("L/N90: {}/{}", summary.l90, unit_scaling(summary.n90));
 
+    println!("Scaffold length: {}", unit_scaling(summary.scaffold_length));
+
 }

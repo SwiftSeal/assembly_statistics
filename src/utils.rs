@@ -9,6 +9,7 @@ pub struct Scaffold {
 }
 
 pub struct Summary {
+    gc: f64,
     n50: u64,
     l50: u64,
     n90: u64,
@@ -106,6 +107,10 @@ pub fn summary_statistics(scaffolds: &[Scaffold]) -> Summary {
         .max()
         .unwrap_or(0);
 
+    // calculate mean GC content
+    let contig_gcs: Vec<f64> = scaffolds.iter().flat_map(|scaffold: &Scaffold| scaffold.contig_gcs.clone()).collect();
+    let gc: f64 = contig_gcs.iter().sum::<f64>() / contig_gcs.len() as f64;
+
     // get sorted list of all contig lengths
     let mut contig_lengths: Vec<u64> = scaffolds
         .iter()
@@ -146,6 +151,7 @@ pub fn summary_statistics(scaffolds: &[Scaffold]) -> Summary {
     }
 
     Summary {
+        gc,
         n50,
         l50,
         n90,
@@ -161,14 +167,16 @@ pub fn summary_statistics(scaffolds: &[Scaffold]) -> Summary {
 }
 
 pub fn print_summary(summary: &Summary) {
-    println!("Scaffold count: {}", summary.scaffold_count);
-    println!("Scaffold length: {}", unit_scaling(summary.scaffold_length, 1));
-    println!("Largest scaffold: {}", unit_scaling(summary.largest_scaffold, 1));
-    println!("Contig count: {}", summary.contig_count);
-    println!("Contig length: {}", unit_scaling(summary.contig_length, 1));
-    println!("Largest contig: {}", unit_scaling(summary.largest_contig, 1));
-    println!("L/N50: {}/{}", summary.l50, unit_scaling(summary.n50, 1));
-    println!("L/N90: {}/{}", summary.l90, unit_scaling(summary.n90, 1)); 
+    use termion::style;
+    println!("   {bold}Assembly size:{reset} {scaffold_length}", bold = style::Bold, reset = style::Reset, scaffold_length = unit_scaling(summary.scaffold_length, 1));
+    println!(" {bold}Mean GC content:{reset} {gc:.1}%", bold = style::Bold, reset = style::Reset, gc = summary.gc * 100.0);
+    println!("  {bold}Scaffold count:{reset} {scaffold_count}", bold = style::Bold, reset = style::Reset, scaffold_count = summary.scaffold_count);
+    println!("  {bold}Scaffold L/N50:{reset} {l50}/{n50}", bold = style::Bold, reset = style::Reset, l50 = summary.l50, n50 = unit_scaling(summary.n50, 1));
+    println!("  {bold}Scaffold L/N90:{reset} {l90}/{n90}", bold = style::Bold, reset = style::Reset, l90 = summary.l90, n90 = unit_scaling(summary.n90, 1));
+    println!("{bold}Largest scaffold:{reset} {scaffold_length}", bold = style::Bold, reset = style::Reset, scaffold_length = unit_scaling(summary.largest_scaffold, 1));
+    println!("    {bold}Contig count:{reset} {contig_count}", bold = style::Bold, reset = style::Reset, contig_count = summary.contig_count);
+    println!("     {bold}Contig size:{reset} {contig_length}", bold = style::Bold, reset = style::Reset, contig_length = unit_scaling(summary.contig_length, 1));
+    println!("  {bold}Largest contig:{reset} {largest_contig}", bold = style::Bold, reset = style::Reset, largest_contig = unit_scaling(summary.largest_contig, 1));
 
     let mut minimum_length: u64 = 1000;
     loop {
